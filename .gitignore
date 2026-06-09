@@ -155,6 +155,7 @@ config*.ini
 .vscode/
 cache.json
 web_config.json
+users.db
 
 # Portable build
 chaoxing_portable/

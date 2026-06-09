@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/Card';
 import Button from './ui/Button';
-import { 
-  CheckCircle2, Clock, AlertCircle, Play, Home, BookOpen, 
+import {
+  CheckCircle2, Clock, AlertCircle, Play, Home, BookOpen,
   FileText, XCircle, Loader2, ChevronDown, ChevronRight,
-  Activity, TrendingUp, Film, MonitorPlay
+  Activity, TrendingUp, Film, MonitorPlay, Wifi, WifiOff
 } from 'lucide-react';
 import api from '../api/axios';
 
@@ -43,7 +43,7 @@ const StudyProgress = ({ taskId, onBack }) => {
       const response = await api.get(`/task/${taskId}`);
       if (response.data.status) {
         setTaskStatus(response.data.data);
-        
+
         if (response.data.data.status === 'completed' || response.data.data.status === 'error') {
           if (intervalRef.current) {
             clearInterval(intervalRef.current);
@@ -91,7 +91,7 @@ const StudyProgress = ({ taskId, onBack }) => {
 
   const getStatusInfo = () => {
     if (!taskStatus) return { text: '加载中...', color: 'text-gray-500', icon: Clock };
-    
+
     switch (taskStatus.status) {
       case 'running':
         return { text: '学习中', color: 'text-blue-600', icon: Play };
@@ -130,14 +130,53 @@ const StudyProgress = ({ taskId, onBack }) => {
     }
   };
 
+  // 计算课程完成进度
+  const getCourseProgress = (course) => {
+    if (!course.chapters || course.chapters.length === 0) return 0;
+    const completed = course.chapters.filter(c => c.has_finished).length;
+    return Math.round((completed / course.chapters.length) * 100);
+  };
+
+  // 获取进度条颜色
+  const getProgressColor = (progress) => {
+    if (progress >= 100) return 'from-green-400 to-green-600';
+    if (progress >= 60) return 'from-blue-400 to-blue-600';
+    if (progress >= 30) return 'from-yellow-400 to-yellow-500';
+    return 'from-orange-400 to-orange-500';
+  };
+
+  // 获取进度条背景
+  const getProgressBg = (progress) => {
+    if (progress >= 100) return 'bg-green-500';
+    if (progress >= 60) return 'bg-blue-500';
+    return 'bg-orange-500';
+  };
+
   const statusInfo = getStatusInfo();
   const StatusIcon = statusInfo.icon;
   const progress = taskStatus ? (taskStatus.progress / (taskStatus.total || 1)) * 100 : 0;
+
+  // 计算章节完成率
+  const chapterProgress = taskStatus?.stats
+    ? (taskStatus.stats.completed_chapters / (taskStatus.stats.total_chapters || 1)) * 100
+    : 0;
+
+  // 计算任务完成率
+  const taskProgress = taskStatus?.stats
+    ? (taskStatus.stats.completed_tasks / (taskStatus.stats.total_tasks || 1)) * 100
+    : 0;
 
   const formatTime = (seconds) => {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const formatDuration = (seconds) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return `${h}小时${m}分钟`;
+    return `${m}分钟`;
   };
 
   return (
@@ -147,7 +186,15 @@ const StudyProgress = ({ taskId, onBack }) => {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">学习进度监控</h1>
-            <p className="text-muted-foreground mt-1">实时跟踪任务执行详情</p>
+            <p className="text-muted-foreground mt-1">
+              实时跟踪任务执行详情
+              {taskStatus?.offline_mode && (
+                <span className="ml-2 inline-flex items-center text-sm text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                  <WifiOff className="w-3 h-3 mr-1" />
+                  离线模式
+                </span>
+              )}
+            </p>
           </div>
           {(taskStatus?.status === 'completed' || taskStatus?.status === 'error') && (
             <Button onClick={onBack}>
@@ -155,6 +202,65 @@ const StudyProgress = ({ taskId, onBack }) => {
               返回首页
             </Button>
           )}
+        </div>
+
+        {/* Overall Progress Banner */}
+        <div className="mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-3">
+              <div className={`p-2 rounded-lg ${progress >= 100 ? 'bg-green-100' : 'bg-blue-100'}`}>
+                <TrendingUp className={`w-6 h-6 ${progress >= 100 ? 'text-green-600' : 'text-blue-600'}`} />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">整体完成进度</h2>
+                <p className="text-sm text-gray-500">
+                  {taskStatus ? `${taskStatus.progress || 0} / ${taskStatus.total || 0} 课程完成` : '加载中...'}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className={`text-4xl font-bold ${progress >= 100 ? 'text-green-600' : 'text-blue-600'}`}>
+                {Math.round(progress)}%
+              </span>
+            </div>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-5 overflow-hidden">
+            <div
+              className={`bg-gradient-to-r ${getProgressColor(progress)} h-full transition-all duration-700 ease-out relative`}
+              style={{ width: `${Math.min(progress, 100)}%` }}
+            >
+              {progress > 0 && (
+                <div className="absolute inset-0 bg-[length:20px_20px] bg-[linear-gradient(45deg,rgba(255,255,255,0.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.15)_50%,rgba(255,255,255,0.15)_75%,transparent_75%,transparent)] animate-[progress-stripes_1s_linear_infinite]" />
+              )}
+            </div>
+          </div>
+          {/* Sub progress bars */}
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-gray-500">章节完成率</span>
+                <span className="font-medium text-gray-700">{Math.round(chapterProgress)}%</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-green-400 h-full transition-all duration-500"
+                  style={{ width: `${Math.min(chapterProgress, 100)}%` }}
+                />
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-gray-500">任务完成率</span>
+                <span className="font-medium text-gray-700">{Math.round(taskProgress)}%</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-purple-400 h-full transition-all duration-500"
+                  style={{ width: `${Math.min(taskProgress, 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Statistics Cards */}
@@ -206,12 +312,14 @@ const StudyProgress = ({ taskId, onBack }) => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">完成率</p>
+                  <p className="text-sm font-medium text-muted-foreground">运行时间</p>
                   <p className="text-2xl font-bold text-gray-900 mt-1">
-                    {Math.round(progress)}%
+                    {taskStatus?.start_time
+                      ? formatDuration(Math.floor((Date.now() / 1000) - taskStatus.start_time))
+                      : '00:00'}
                   </p>
                 </div>
-                <TrendingUp className="h-8 w-8 text-orange-500" />
+                <Clock className="h-8 w-8 text-orange-500" />
               </div>
             </CardContent>
           </Card>
@@ -226,21 +334,6 @@ const StudyProgress = ({ taskId, onBack }) => {
                 <CardTitle>当前进度</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-muted-foreground">整体进度</span>
-                    <span className="font-semibold">
-                      {taskStatus?.progress || 0} / {taskStatus?.total || 0} 课程
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                    <div
-                      className="bg-gradient-to-r from-blue-500 to-blue-600 h-full transition-all duration-500 ease-out"
-                      style={{ width: `${Math.min(progress, 100)}%` }}
-                    />
-                  </div>
-                </div>
-
                 {taskStatus?.current_course && (
                   <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100 relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-4 opacity-10">
@@ -295,7 +388,7 @@ const StudyProgress = ({ taskId, onBack }) => {
                               </span>
                             </div>
                           </div>
-                          
+
                           <div className="relative pt-1">
                             <div className="flex items-center justify-between text-xs text-gray-500 mb-1 font-mono">
                               <span>{formatTime(job.current_time)}</span>
@@ -330,7 +423,7 @@ const StudyProgress = ({ taskId, onBack }) => {
               </CardContent>
             </Card>
 
-            {/* Course Details */}
+            {/* Course Details with Progress Bars */}
             {taskDetails && taskDetails.courses && taskDetails.courses.length > 0 && (
               <Card>
                 <CardHeader>
@@ -340,48 +433,67 @@ const StudyProgress = ({ taskId, onBack }) => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    {taskDetails.courses.map((course) => (
-                      <div key={course.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                        <div
-                          className="p-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors flex items-center justify-between"
-                          onClick={() => toggleCourse(course.id)}
-                        >
-                          <div className="flex items-center flex-1">
-                            {getCourseStatusIcon(course.status)}
-                            <span className="ml-3 font-medium text-gray-900">{course.title}</span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            {course.chapters && course.chapters.length > 0 && (
-                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
-                                {course.chapters.filter(c => c.has_finished).length} / {course.chapters.length} 章节
-                              </span>
-                            )}
-                            {expandedCourses.has(course.id) ? (
-                              <ChevronDown className="h-4 w-4 text-gray-500" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4 text-gray-500" />
-                            )}
-                          </div>
-                        </div>
-                        
-                        {expandedCourses.has(course.id) && course.chapters && course.chapters.length > 0 && (
-                          <div className="p-3 bg-white border-t border-gray-200">
-                            <div className="space-y-1">
-                              {course.chapters.map((chapter, idx) => (
-                                <div key={chapter.id} className="flex items-center text-sm py-2 px-3 hover:bg-gray-50 rounded">
-                                  <span className="text-gray-400 mr-3 w-6">{idx + 1}.</span>
-                                  <span className="flex-1 text-gray-700">{chapter.title}</span>
-                                  {chapter.has_finished && (
-                                    <CheckCircle2 className="h-4 w-4 text-green-500 ml-2" />
-                                  )}
-                                </div>
-                              ))}
+                  <div className="space-y-3">
+                    {taskDetails.courses.map((course) => {
+                      const courseProgress = getCourseProgress(course);
+                      return (
+                        <div key={course.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                          <div
+                            className="p-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+                            onClick={() => toggleCourse(course.id)}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center flex-1 min-w-0">
+                                {getCourseStatusIcon(course.status)}
+                                <span className="ml-3 font-medium text-gray-900 truncate">{course.title}</span>
+                              </div>
+                              <div className="flex items-center space-x-3 flex-shrink-0 ml-4">
+                                {course.chapters && course.chapters.length > 0 && (
+                                  <span className="text-xs text-gray-500">
+                                    {course.chapters.filter(c => c.has_finished).length} / {course.chapters.length} 章节
+                                  </span>
+                                )}
+                                <span className={`text-sm font-bold ${courseProgress >= 100 ? 'text-green-600' : 'text-blue-600'}`}>
+                                  {courseProgress}%
+                                </span>
+                                {expandedCourses.has(course.id) ? (
+                                  <ChevronDown className="h-4 w-4 text-gray-500" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4 text-gray-500" />
+                                )}
+                              </div>
+                            </div>
+                            {/* 课程进度条 */}
+                            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                              <div
+                                className={`bg-gradient-to-r ${getProgressColor(courseProgress)} h-full transition-all duration-500 ease-out`}
+                                style={{ width: `${Math.min(courseProgress, 100)}%` }}
+                              />
                             </div>
                           </div>
-                        )}
-                      </div>
-                    ))}
+
+                          {expandedCourses.has(course.id) && course.chapters && course.chapters.length > 0 && (
+                            <div className="p-3 bg-white border-t border-gray-200">
+                              <div className="space-y-1">
+                                {course.chapters.map((chapter, idx) => (
+                                  <div key={chapter.id} className={`flex items-center text-sm py-2 px-3 rounded transition-colors ${chapter.has_finished ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
+                                    <span className="text-gray-400 mr-3 w-6">{idx + 1}.</span>
+                                    <span className={`flex-1 ${chapter.has_finished ? 'text-green-700' : 'text-gray-700'}`}>
+                                      {chapter.title}
+                                    </span>
+                                    {chapter.has_finished ? (
+                                      <CheckCircle2 className="h-4 w-4 text-green-500 ml-2" />
+                                    ) : (
+                                      <div className="w-4 h-4 rounded-full border-2 border-gray-300 ml-2" />
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -428,7 +540,7 @@ const StudyProgress = ({ taskId, onBack }) => {
                     {taskId}
                   </p>
                 </div>
-                
+
                 <div>
                   <p className="text-sm text-muted-foreground">开始时间</p>
                   <p className="text-sm font-semibold mt-1">
@@ -437,6 +549,18 @@ const StudyProgress = ({ taskId, onBack }) => {
                       : '-'}
                   </p>
                 </div>
+
+                {taskStatus?.offline_mode && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-sm font-semibold text-green-700 flex items-center">
+                      <WifiOff className="mr-2 h-4 w-4" />
+                      离线刷课已开启
+                    </p>
+                    <p className="text-xs text-green-600 mt-1">
+                      关闭网页后任务将继续在后台执行
+                    </p>
+                  </div>
+                )}
 
                 {taskStatus?.status === 'completed' && (
                   <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
@@ -492,6 +616,29 @@ const StudyProgress = ({ taskId, onBack }) => {
                       <span className="font-semibold text-yellow-600">{taskStatus.stats.skipped_tasks}</span>
                     </div>
                   )}
+                  {/* 完成率可视化 */}
+                  <div className="pt-3 border-t">
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-gray-500">章节完成率</span>
+                      <span className="font-medium">{Math.round(chapterProgress)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-green-400 h-full transition-all duration-500"
+                        style={{ width: `${Math.min(chapterProgress, 100)}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-xs mb-1 mt-3">
+                      <span className="text-gray-500">任务完成率</span>
+                      <span className="font-medium">{Math.round(taskProgress)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-purple-400 h-full transition-all duration-500"
+                        style={{ width: `${Math.min(taskProgress, 100)}%` }}
+                      />
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             )}

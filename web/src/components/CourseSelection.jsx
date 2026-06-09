@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import Button from './ui/Button';
 import Input from './ui/Input';
 import Label from './ui/Label';
-import { Play, Loader2, BookOpen, Settings, LogOut } from 'lucide-react';
+import { Play, Loader2, BookOpen, Settings, LogOut, WifiOff, Wifi, Clock, AlertTriangle } from 'lucide-react';
 import api from '../api/axios';
 import AdvancedSettings from './AdvancedSettings';
 
@@ -14,6 +14,9 @@ const CourseSelection = ({ userInfo, onStartStudy, onLogout }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
+  const [offlineMode, setOfflineMode] = useState(false);
+  const [showOfflineConfirm, setShowOfflineConfirm] = useState(false);
+  const [runningTasks, setRunningTasks] = useState([]);
   const [settings, setSettings] = useState({
     speed: 1.0,
     jobs: 4,
@@ -26,6 +29,7 @@ const CourseSelection = ({ userInfo, onStartStudy, onLogout }) => {
   useEffect(() => {
     fetchConfig();
     fetchCourses();
+    fetchRunningTasks();
   }, []);
 
   const fetchConfig = async () => {
@@ -41,6 +45,9 @@ const CourseSelection = ({ userInfo, onStartStudy, onLogout }) => {
         }
         if (Array.isArray(cfg.selectedCourses)) {
           setSelectedCourses(cfg.selectedCourses);
+        }
+        if (cfg.offline_mode !== undefined) {
+          setOfflineMode(cfg.offline_mode);
         }
       }
     } catch (err) {
@@ -65,6 +72,17 @@ const CourseSelection = ({ userInfo, onStartStudy, onLogout }) => {
     }
   };
 
+  const fetchRunningTasks = async () => {
+    try {
+      const response = await api.get('/tasks/running');
+      if (response.data.status) {
+        setRunningTasks(response.data.data || []);
+      }
+    } catch (err) {
+      console.error('获取运行中任务失败:', err);
+    }
+  };
+
   const toggleCourse = (courseId) => {
     setSelectedCourses((prev) =>
       prev.includes(courseId)
@@ -77,7 +95,21 @@ const CourseSelection = ({ userInfo, onStartStudy, onLogout }) => {
     onStartStudy({
       ...settings,
       course_list: selectedCourses.length > 0 ? selectedCourses : courses.map(c => c.courseId),
+      offline_mode: offlineMode,
     });
+  };
+
+  const handleOfflineToggle = () => {
+    if (!offlineMode) {
+      setShowOfflineConfirm(true);
+    } else {
+      setOfflineMode(false);
+    }
+  };
+
+  const confirmOffline = () => {
+    setOfflineMode(true);
+    setShowOfflineConfirm(false);
   };
 
   const handleSaveConfig = async () => {
@@ -87,6 +119,7 @@ const CourseSelection = ({ userInfo, onStartStudy, onLogout }) => {
       const payload = {
         settings,
         selectedCourses,
+        offline_mode: offlineMode,
       };
       const response = await api.post('/config', payload);
       if (!response.data.status) {
@@ -127,6 +160,74 @@ const CourseSelection = ({ userInfo, onStartStudy, onLogout }) => {
             退出登录
           </Button>
         </div>
+
+        {/* 运行中任务提示 */}
+        {runningTasks.length > 0 && (
+          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-start">
+              <Clock className="h-5 w-5 text-blue-600 mr-3 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-blue-700">
+                  当前有 {runningTasks.length} 个任务正在运行
+                </p>
+                <div className="mt-2 space-y-1">
+                  {runningTasks.map(task => (
+                    <div key={task.task_id} className="text-xs text-blue-600 flex items-center">
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                      {task.current_course || task.task_id}
+                      {task.offline_mode && <WifiOff className="w-3 h-3 ml-1" />}
+                      <span className="ml-2">{task.progress}/{task.total} 课程</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 离线模式确认弹窗 */}
+        {showOfflineConfirm && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl">
+              <div className="flex items-start mb-4">
+                <div className="p-2 bg-orange-100 rounded-lg mr-4">
+                  <AlertTriangle className="h-6 w-6 text-orange-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">开启离线刷课模式</h3>
+                  <p className="text-sm text-gray-600 mt-2">
+                    开启后，即使您关闭浏览器或断开网络，刷课任务仍将在服务器后台继续执行。
+                  </p>
+                  <div className="mt-3 p-3 bg-yellow-50 rounded-lg text-sm text-yellow-800">
+                    <p>请注意：</p>
+                    <ul className="list-disc list-inside mt-1 space-y-1">
+                      <li>任务将在服务器后台持续运行</li>
+                      <li>关闭网页后无法实时查看进度</li>
+                      <li>下次打开网页可查看任务结果</li>
+                      <li>请确保服务器保持运行状态</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              <div className="flex space-x-3">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowOfflineConfirm(false)}
+                >
+                  取消
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={confirmOffline}
+                >
+                  <WifiOff className="mr-2 h-4 w-4" />
+                  确认开启
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
@@ -226,6 +327,38 @@ const CourseSelection = ({ userInfo, onStartStudy, onLogout }) => {
                   </select>
                 </div>
 
+                {/* 离线刷课开关 */}
+                <div className="pt-4 border-t">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      {offlineMode ? (
+                        <WifiOff className="h-5 w-5 text-green-600" />
+                      ) : (
+                        <Wifi className="h-5 w-5 text-gray-400" />
+                      )}
+                      <div>
+                        <Label className="cursor-pointer">离线刷课</Label>
+                        <p className="text-xs text-muted-foreground">
+                          {offlineMode ? '关闭网页后继续执行' : '关闭网页后任务停止'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleOfflineToggle}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        offlineMode ? 'bg-green-500' : 'bg-gray-200'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          offlineMode ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
                 <div className="pt-4 border-t">
                   <AdvancedSettings settings={settings} onChange={setSettings} />
                 </div>
@@ -233,7 +366,7 @@ const CourseSelection = ({ userInfo, onStartStudy, onLogout }) => {
               <CardFooter className="flex flex-col space-y-2">
                 <Button className="w-full" onClick={handleStartStudy}>
                   <Play className="mr-2 h-4 w-4" />
-                  开始学习
+                  {offlineMode ? '开始离线学习' : '开始学习'}
                 </Button>
                 <Button
                   type="button"
@@ -263,6 +396,12 @@ const CourseSelection = ({ userInfo, onStartStudy, onLogout }) => {
                     <span className="text-muted-foreground">已选择:</span>
                     <span className="font-semibold">
                       {selectedCourses.length > 0 ? selectedCourses.length : '全部'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">刷课模式:</span>
+                    <span className={`font-semibold ${offlineMode ? 'text-green-600' : 'text-gray-600'}`}>
+                      {offlineMode ? '离线模式' : '在线模式'}
                     </span>
                   </div>
                 </div>
