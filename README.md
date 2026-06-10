@@ -125,6 +125,7 @@ chaoxing/
 ## 致谢
 
 - 原项目：[Samueli924/chaoxing](https://github.com/Samueli924/chaoxing)
+- 原项目：https://github.com/sweetcornna/university-helper
 - 社区贡献者与所有用户
 
 ## 许可与声明
